@@ -37,9 +37,112 @@
   <script src="./static/js/bulma-carousel.min.js"></script>
   <script src="./static/js/bulma-slider.min.js"></script>
   <script src="./static/js/index.js"></script>
+
+  <style>
+    /* For the 3D container:
+       We'll make sure Three.js fills it entirely. */
+    .viewer>canvas {
+      width: 100% !important;
+      height: 100% !important;
+    }
+  </style>
 </head>
 
 <body>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/PLYLoader.js"></script>
+
+  <script>
+    // -----------------------------
+    // The reusable viewer function
+    // -----------------------------
+    function create3DViewer(containerId, pointcloudPath, meshPath, cameraLocation, rendererTarget, fov = 20) {
+      // 1. Get container reference
+      const container = document.getElementById(containerId);
+      if (!container) {
+        console.error(`Container with ID '${containerId}' not found.`);
+        return;
+      }
+
+      // 2. Create scene
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xffffff);
+
+      // 3. Create camera
+      const camera = new THREE.PerspectiveCamera(
+        fov,
+        container.clientWidth / container.clientHeight,
+        0.1,
+        1000
+      );
+      camera.position.set(...cameraLocation);
+      camera.up.set(0, 0, 1);
+
+      // 4. Create renderer and add to container
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      container.appendChild(renderer.domElement);
+
+      // 5. Add controls
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.target.set(...rendererTarget);
+      controls.update();
+
+      // 6. Add lights
+      const ambientLight = new THREE.AmbientLight(0xffffff, 1);
+      scene.add(ambientLight);
+
+      // 7. Load PLY files
+      const plyLoader = new THREE.PLYLoader();
+
+      // Point cloud
+      if (pointcloudPath) {
+        plyLoader.load(pointcloudPath, (geometry) => {
+          const material = new THREE.PointsMaterial({
+            size: 2.0, // point size
+            vertexColors: geometry.hasAttribute("color"),
+          });
+          const points = new THREE.Points(geometry, material);
+          scene.add(points);
+        });
+      }
+
+      // Mesh
+      if (meshPath) {
+        plyLoader.load(meshPath, (geometry2) => {
+          geometry2.computeVertexNormals(); // important for correct lighting
+          const material2 = new THREE.MeshPhongMaterial({
+            vertexColors: geometry2.hasAttribute("color"),
+          });
+          const mesh = new THREE.Mesh(geometry2, material2);
+          scene.add(mesh);
+        });
+      }
+
+      // 8. Animation loop
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      // 9. Handle resize
+      window.addEventListener("resize", () => {
+        // We recalculate the size for this container
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height);
+      });
+
+      // Optionally, return an object that lets you control or cleanup if needed
+      return { scene, camera, renderer, controls };
+    }
+  </script>
 
   <section class="hero">
     <div class="hero-body">
@@ -198,17 +301,21 @@
         </h2>
         <div class="content has-text-justified">
           <img src="./static/images/data.png" class="img-responsive">
-          <p><strong>Top left</strong>: For scraped YouTube videos, we run shot change detection to split the videos
+          <p>
+            <strong>Top left</strong>: For scraped YouTube videos, we run shot change detection to split the videos
             into
             clips of individual scene. <strong>Top right</strong>: We then use Colmap to reconstruct the 3D scene and
             recover camera poses from video frames. <strong>Bottom</strong>: Finally, we connect camera poses from
             consecutive frames to formulate 3D camera trajectories and apply Kalman filter to discard low quality
-            reconstructions whose camera poses from neighboring frames are drastically different. </p>
+            reconstructions whose camera poses from neighboring frames are drastically different.
+          </p>
+        </div>
 
-          <!-- figure 2 -->
-          <h2 class="title is-4">
-            Model overview of DVGFormer
-          </h2>
+        <!-- figure 2 -->
+        <h2 class="title is-4">
+          Model overview of DVGFormer
+        </h2>
+        <div class="content has-text-justified">
           <img src="./static/images/model.png" class="img-responsive">
           <p>
             To predict camera motion <i>a<sub>t</sub></i> for time step <i>t</i>, the auto-regressive architecture uses
@@ -221,6 +328,137 @@
             <i>t+1</i>.
           </p>
         </div>
+
+        <!-- user extension -->
+        <h2 class="title is-4">Camera path extension from user input</h2>
+        <div style="
+          margin: 0; 
+          padding: 0; 
+          line-height: 0; 
+          display: grid; 
+          /* 2 columns: 1 'fraction' for video, 2 'fractions' for 3D */
+          grid-template-columns: 1fr 2fr;
+          /* 2 rows, one for each video+3D pair */
+          grid-template-rows: repeat(2, auto); 
+          gap: 3px;
+        ">
+          <!-- Video 1 -->
+          <!-- <div class="video-wrapper">
+            <video class="video" onclick="setAttribute('controls','true');" autoplay="" loop="" muted="">
+              <source
+                src="./static/3d/rome_dvgformer.mp4"
+                type="video/mp4" />
+            </video>
+          </div> -->
+          <!-- 3D Viewer 1 -->
+          <!-- <div id="viewer1" class="viewer"></div> -->
+
+          <!-- Video 2 -->
+          <div class="video-wrapper">
+            <video class="video" onclick="setAttribute('controls','true');" autoplay="" loop="" muted="">
+              <source src="./static/3d/rome_userforced.mp4" type="video/mp4" />
+            </video>
+          </div>
+          <!-- 3D Viewer 2 -->
+          <div id="viewer2" class="viewer"></div>
+
+        </div>
+        <script>
+          // create3DViewer(
+          //   "viewer1",
+          //   "./static/3d/rome_pointcloud.ply",      // path to pointcloud
+          //   "./static/3d/rome_dvgformer_path.ply",  // path to mesh
+          //   [-29.984727, -28.980003, 151.468724],   // camera location
+          //   [156.190002, -68.980003, 111.259995]    // camera target
+          // );
+
+          create3DViewer(
+            "viewer2",
+            "./static/3d/rome_pointcloud.ply",
+            "./static/3d/rome_userforced_path.ply",
+            [-29.984727, -28.980003, 151.468724],
+            [184.205633, -139.192592, 120.056117]
+          );
+        </script>
+
+        <p>
+          Given user input camera path, DVGFormer can smoothly extend its motion into
+          longer sequence. See if you can spot the changes from the user input to the
+          generated path by DVGFormer in video! 🤣 Scroll to zoom in and drag to change view.
+
+          <!-- Spoiler section -->
+        <details>
+          <summary style="cursor: pointer; text-decoration: underline;">
+            Click to reveal spoiler
+          </summary>
+          <i><u>Gray camera path and small RGB camera axis are from user input,
+              purple path and large RGB camera axis are generated by DVGFormer.</u></i>
+        </details>
+        </p>
+
+        <br>
+
+        <!-- baseline comparison -->
+
+        <h2 class="title is-4">Comparison with baseline</h2>
+        <div style="
+          margin: 0; 
+          padding: 0; 
+          line-height: 0; 
+          display: grid; 
+          /* 2 columns: 1 'fraction' for video, 2 'fractions' for 3D */
+          grid-template-columns: 1fr 2fr;
+          /* 2 rows, one for each video+3D pair */
+          grid-template-rows: repeat(2, auto); 
+          gap: 3px;
+        ">
+          <!-- Video 1 -->
+          <div class="video-wrapper">
+            <video class="video" onclick="setAttribute('controls','true');" autoplay="" loop="" muted="">
+              <source src="./static/3d/himeji_rt1.mp4" type="video/mp4" />
+            </video>
+          </div>
+          <!-- 3D Viewer 3 -->
+          <div id="viewer3" class="viewer"></div>
+
+          <!-- Video 2 -->
+          <div class="video-wrapper">
+            <video class="video" onclick="setAttribute('controls','true');" autoplay="" loop="" muted="">
+              <source src="./static/3d/himeji_dvgformer.mp4" type="video/mp4" />
+            </video>
+          </div>
+          <!-- 3D Viewer 2 -->
+          <div id="viewer4" class="viewer"></div>
+
+        </div>
+        <script>
+          create3DViewer(
+            "viewer3",
+            "./static/3d/himeji_pointcloud.ply",      // path to pointcloud
+            "./static/3d/himeji_rt1_path.ply",  // path to mesh
+            [-267.742722, -248.496634, 95.270341],    // camera location
+            [-187.470686, -208.360616, 82.673410],    // camera target
+            30
+          );
+
+          create3DViewer(
+            "viewer4",
+            "./static/3d/himeji_pointcloud.ply",
+            "./static/3d/himeji_dvgformer_path.ply",
+            [-267.742722, -248.496634, 95.270341],
+            [-187.470686, -208.360616, 82.673410],
+            30
+          );
+        </script>
+
+        <p>
+          In contrast to the sudden movements or direction changes in the 3D camera path generated by the basline
+          (<strong>top</strong>), DVGFormer (<strong>bottom</strong>) can produce a much smoother camera path. See paper
+          for more details.
+        </p>
+
+        <br>
+
 
         <!-- more results -->
         <h2 class="title is-4">
@@ -279,12 +517,12 @@
             </video>
           </div>
           <!-- <div class="video-wrapper">
-              <video class="video" onclick="setAttribute('controls', 'true');" autoplay="" loop="" muted="">
-                <source
-                  src="./static/videos/demo-nonfpv-blosm/nonfpv_paris_return10.00_crashNone_410_2024-12-07_04-00-10_online_plus.mp4"
-                  type="video/mp4">
-              </video>
-            </div> -->
+            <video class="video" onclick="setAttribute('controls', 'true');" autoplay="" loop="" muted="">
+              <source
+                src="./static/videos/demo-nonfpv-blosm/nonfpv_paris_return10.00_crashNone_410_2024-12-07_04-00-10_online_plus.mp4"
+                type="video/mp4">
+            </video>
+          </div> -->
           <div class="video-wrapper">
             <video class="video" onclick="setAttribute('controls', 'true');" autoplay="" loop="" muted="">
               <source
@@ -412,12 +650,12 @@
             </video>
           </div>
           <!-- <div class="video-wrapper">
-              <video class="video" onclick="setAttribute('controls', 'true');" autoplay="" loop="" muted="">
-                <source
-                  src="./static/videos/demo-nonfpv-blosm/nonfpv_melbourne_return10.00_crashNone_208_2024-12-07_03-46-06_online_plus.mp4"
-                  type="video/mp4">
-              </video>
-            </div> -->
+            <video class="video" onclick="setAttribute('controls', 'true');" autoplay="" loop="" muted="">
+              <source
+                src="./static/videos/demo-nonfpv-blosm/nonfpv_melbourne_return10.00_crashNone_208_2024-12-07_03-46-06_online_plus.mp4"
+                type="video/mp4">
+            </video>
+          </div> -->
 
           <!-- synthetic -->
 
